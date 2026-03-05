@@ -1,6 +1,6 @@
 import sqlite3
 
-from .models import DecisionRecord, Document, QuestionRecord, WorkItem
+from .models import DecisionRecord, Document, QuestionRecord, Session, WorkItem
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS work_items (
@@ -41,6 +41,23 @@ CREATE TABLE IF NOT EXISTS questions (
     raw_content TEXT DEFAULT '',
     UNIQUE(work_item_id, filename),
     FOREIGN KEY (work_item_id) REFERENCES work_items(id)
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    session_id TEXT PRIMARY KEY,
+    etag TEXT NOT NULL,
+    summary TEXT DEFAULT '',
+    first_message_at TEXT,
+    last_message_at TEXT,
+    message_count INTEGER DEFAULT 0,
+    cataloged_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS session_work_items (
+    session_id TEXT NOT NULL,
+    work_item_id TEXT NOT NULL,
+    UNIQUE(session_id, work_item_id),
+    FOREIGN KEY (session_id) REFERENCES sessions(session_id)
 );
 
 CREATE TABLE IF NOT EXISTS decisions (
@@ -112,3 +129,29 @@ def upsert_decision(conn: sqlite3.Connection, d: DecisionRecord) -> None:
          d.decider, d.date, d.superseded_by, d.tags_json(),
          d.problem_context, d.alternatives, d.raw_content),
     )
+
+
+def upsert_session(conn: sqlite3.Connection, session: Session) -> None:
+    conn.execute(
+        """INSERT OR REPLACE INTO sessions
+        (session_id, etag, summary, first_message_at, last_message_at,
+         message_count, cataloged_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (session.session_id, session.etag, session.summary,
+         session.first_message_at, session.last_message_at,
+         session.message_count, session.cataloged_at),
+    )
+    conn.execute(
+        "DELETE FROM session_work_items WHERE session_id = ?",
+        (session.session_id,),
+    )
+    for wid in session.work_item_ids:
+        conn.execute(
+            "INSERT INTO session_work_items (session_id, work_item_id) VALUES (?, ?)",
+            (session.session_id, wid),
+        )
+
+
+def get_session_etags(conn: sqlite3.Connection) -> dict[str, str]:
+    rows = conn.execute("SELECT session_id, etag FROM sessions").fetchall()
+    return {row[0]: row[1] for row in rows}

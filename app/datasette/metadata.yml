@@ -11,3 +11,7 @@ databases:
         description: Open questions associated with work items
       decisions:
         description: Architectural and process decisions for work items
+      sessions:
+        description: Claude Code transcript sessions cataloged from S3
+      session_work_items:
+        description: Links between sessions and work items

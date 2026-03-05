@@ -13,6 +13,7 @@ from .schema import (
     upsert_question,
     upsert_work_item,
 )
+from .summarizer import sync_sessions
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,8 @@ def loader_loop(
     repo_url: str,
     github_token: str | None = None,
     jira_client: JiraClient | None = None,
+    transcript_store=None,
+    anthropic_client=None,
     interval: int = 30,
 ) -> None:
     conn = sqlite3.connect(str(db_path))
@@ -73,6 +76,8 @@ def loader_loop(
             try:
                 sync_workspace(repo_url, workspace_dir, github_token)
                 run_sync_cycle(conn, workspace_dir, jira_client)
+                if transcript_store and anthropic_client:
+                    sync_sessions(conn, transcript_store, anthropic_client)
             except Exception:
                 logger.exception("Sync cycle failed")
             time.sleep(interval)
