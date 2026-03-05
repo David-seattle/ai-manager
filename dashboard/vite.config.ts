@@ -5,6 +5,16 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    // Proxy to Datasette API — configure in aim-bhhh
+    proxy: {
+      "/api": {
+        target: "http://app:8001",
+        changeOrigin: true,
+      },
+    },
+  },
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/vitest.setup.ts"],
+    globals: true,
   },
 });
