@@ -6,7 +6,7 @@ import Overview from "./pages/Overview";
 import DocumentPage from "./pages/DocumentPage";
 import QuestionsPage from "./pages/QuestionsPage";
 import DecisionsPage from "./pages/DecisionsPage";
-import SessionsPlaceholder from "./pages/SessionsPlaceholder";
+import SessionsPage from "./pages/SessionsPage";
 
 export const router = createBrowserRouter([
   { path: "/", element: <Landing /> },
@@ -19,7 +19,7 @@ export const router = createBrowserRouter([
       { path: "doc/:docType", element: <DocumentPage /> },
       { path: "questions", element: <QuestionsPage /> },
       { path: "decisions", element: <DecisionsPage /> },
-      { path: "sessions", element: <SessionsPlaceholder /> },
+      { path: "sessions", element: <SessionsPage /> },
     ],
   },
   { path: "*", element: <NotFound /> },

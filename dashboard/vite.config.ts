@@ -10,6 +10,10 @@ export default defineConfig({
         target: "http://app:8001",
         changeOrigin: true,
       },
+      "/transcript": {
+        target: "http://app:8002",
+        changeOrigin: true,
+      },
     },
   },
   test: {

@@ -34,6 +34,22 @@ export interface Question {
   raw_content: string;
 }
 
+export interface Session {
+  session_id: string;
+  summary: string;
+  first_message_at: string;
+  last_message_at: string;
+  message_count: number;
+}
+
+export interface TranscriptEntry {
+  type: string;
+  timestamp?: string;
+  message?: {
+    content: string | Array<{ type: string; text?: string }>;
+  };
+}
+
 export interface Decision {
   work_item_id: string;
   filename: string;
