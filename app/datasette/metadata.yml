@@ -1,2 +1,13 @@
 title: AI Manager
-description: Project data explorer — beads, Jira items, and workspace context
+description: Project data explorer -- beads, Jira items, and workspace context
+databases:
+  ai_manager:
+    tables:
+      work_items:
+        description: Work items from beads and Jira
+      documents:
+        description: Requirements and other documents attached to work items
+      questions:
+        description: Open questions associated with work items
+      decisions:
+        description: Architectural and process decisions for work items
