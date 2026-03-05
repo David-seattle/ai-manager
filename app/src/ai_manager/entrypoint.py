@@ -4,6 +4,7 @@ import pathlib
 import sqlite3
 import subprocess
 import sys
+import threading
 
 from .jira_client import JiraClient
 from .loader import loader_loop
@@ -25,6 +26,7 @@ JIRA_API_TOKEN = os.environ.get("JIRA_API_TOKEN", "")
 S3_BUCKET = os.environ.get("TRANSCRIPT_S3_BUCKET", "")
 S3_REGION = os.environ.get("TRANSCRIPT_S3_REGION", "us-east-2")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+TRANSCRIPT_PROXY_PORT = os.environ.get("TRANSCRIPT_PROXY_PORT", "8002")
 
 
 def main() -> None:
@@ -59,6 +61,14 @@ def main() -> None:
         transcript_store = TranscriptStore(s3, S3_BUCKET)
         anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         logger.info("Transcript store configured for s3://%s", S3_BUCKET)
+
+        from .transcript_proxy import start_proxy
+
+        proxy_port = int(TRANSCRIPT_PROXY_PORT)
+        proxy_server = start_proxy(transcript_store, proxy_port)
+        proxy_thread = threading.Thread(target=proxy_server.serve_forever, daemon=True)
+        proxy_thread.start()
+        logger.info("Transcript proxy started on port %d", proxy_port)
 
     try:
         loader_loop(
