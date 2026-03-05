@@ -58,3 +58,21 @@ class DecisionRecord:
 
     def tags_json(self) -> str:
         return json.dumps(self.tags)
+
+
+@dataclass
+class S3Object:
+    key: str
+    etag: str
+
+
+@dataclass
+class Session:
+    session_id: str
+    etag: str
+    summary: str = ""
+    first_message_at: str | None = None
+    last_message_at: str | None = None
+    message_count: int = 0
+    cataloged_at: str | None = None
+    work_item_ids: list[str] = field(default_factory=list)

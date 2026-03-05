@@ -1,12 +1,14 @@
 import sqlite3
 
-from ai_manager.models import DecisionRecord, Document, QuestionRecord, WorkItem
+from ai_manager.models import DecisionRecord, Document, QuestionRecord, Session, WorkItem
 from ai_manager.schema import (
     create_tables,
     delete_children,
+    get_session_etags,
     upsert_decision,
     upsert_document,
     upsert_question,
+    upsert_session,
     upsert_work_item,
 )
 
@@ -22,6 +24,8 @@ def test_create_tables_idempotent(in_memory_db):
     assert "documents" in names
     assert "questions" in names
     assert "decisions" in names
+    assert "sessions" in names
+    assert "session_work_items" in names
 
 
 def test_upsert_work_item(in_memory_db):
@@ -105,3 +109,56 @@ def test_delete_children(in_memory_db):
     assert in_memory_db.execute("SELECT COUNT(*) FROM questions").fetchone()[0] == 0
     assert in_memory_db.execute("SELECT COUNT(*) FROM decisions").fetchone()[0] == 0
     assert in_memory_db.execute("SELECT COUNT(*) FROM work_items").fetchone()[0] == 1
+
+
+def test_upsert_session(in_memory_db):
+    create_tables(in_memory_db)
+    session = Session(
+        session_id="sess-1",
+        etag='"abc"',
+        summary="Did some work",
+        first_message_at="2025-01-01T10:00:00Z",
+        last_message_at="2025-01-01T10:05:00Z",
+        message_count=5,
+        cataloged_at="2025-01-02T00:00:00Z",
+        work_item_ids=["EN-1234", "aim-abc1"],
+    )
+    upsert_session(in_memory_db, session)
+    in_memory_db.commit()
+
+    row = in_memory_db.execute(
+        "SELECT session_id, etag, summary, message_count FROM sessions"
+    ).fetchone()
+    assert row == ("sess-1", '"abc"', "Did some work", 5)
+
+    links = in_memory_db.execute(
+        "SELECT work_item_id FROM session_work_items ORDER BY work_item_id"
+    ).fetchall()
+    assert [l[0] for l in links] == ["EN-1234", "aim-abc1"]
+
+
+def test_upsert_session_replaces_work_item_links(in_memory_db):
+    create_tables(in_memory_db)
+    session = Session(session_id="sess-1", etag='"v1"', work_item_ids=["EN-1", "EN-2"])
+    upsert_session(in_memory_db, session)
+    in_memory_db.commit()
+
+    session.etag = '"v2"'
+    session.work_item_ids = ["EN-2", "EN-3", "EN-4"]
+    upsert_session(in_memory_db, session)
+    in_memory_db.commit()
+
+    links = in_memory_db.execute(
+        "SELECT work_item_id FROM session_work_items ORDER BY work_item_id"
+    ).fetchall()
+    assert [l[0] for l in links] == ["EN-2", "EN-3", "EN-4"]
+
+
+def test_get_session_etags(in_memory_db):
+    create_tables(in_memory_db)
+    upsert_session(in_memory_db, Session(session_id="s1", etag='"a"'))
+    upsert_session(in_memory_db, Session(session_id="s2", etag='"b"'))
+    in_memory_db.commit()
+
+    etags = get_session_etags(in_memory_db)
+    assert etags == {"s1": '"a"', "s2": '"b"'}

@@ -22,6 +22,10 @@ JIRA_BASE_URL = os.environ.get("JIRA_BASE_URL", "")
 JIRA_EMAIL = os.environ.get("JIRA_EMAIL", "")
 JIRA_API_TOKEN = os.environ.get("JIRA_API_TOKEN", "")
 
+S3_BUCKET = os.environ.get("TRANSCRIPT_S3_BUCKET", "")
+S3_REGION = os.environ.get("TRANSCRIPT_S3_REGION", "us-east-2")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
 
 def main() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -43,6 +47,19 @@ def main() -> None:
         jira_client = JiraClient(JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN)
         logger.info("Jira client configured for %s", JIRA_BASE_URL)
 
+    transcript_store = None
+    anthropic_client = None
+    if S3_BUCKET and ANTHROPIC_API_KEY:
+        import anthropic
+        import boto3
+
+        from .s3_client import TranscriptStore
+
+        s3 = boto3.client("s3", region_name=S3_REGION)
+        transcript_store = TranscriptStore(s3, S3_BUCKET)
+        anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        logger.info("Transcript store configured for s3://%s", S3_BUCKET)
+
     try:
         loader_loop(
             db_path=DB_PATH,
@@ -50,6 +67,8 @@ def main() -> None:
             repo_url=REPO_URL,
             github_token=GITHUB_TOKEN or None,
             jira_client=jira_client,
+            transcript_store=transcript_store,
+            anthropic_client=anthropic_client,
         )
     except KeyboardInterrupt:
         logger.info("Shutting down")
