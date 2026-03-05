@@ -13,4 +13,4 @@ COPY . .
 
 EXPOSE 8001
 
-CMD ["uv", "run", "datasette", "serve", "/data/ai_manager.db", "--host", "0.0.0.0", "--port", "8001", "--metadata", "datasette/metadata.yml"]
+CMD ["uv", "run", "python", "-m", "ai_manager.entrypoint"]
