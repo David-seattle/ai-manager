@@ -1,0 +1,22 @@
+services:
+  app:
+    build: ./app
+    ports:
+      - "${DATASETTE_PORT:-8001}:8001"
+    volumes:
+      - db-data:/data
+      - workspace-repo:/workspace
+    env_file:
+      - path: .env
+        required: false
+
+  dashboard:
+    build: ./dashboard
+    ports:
+      - "${DASHBOARD_PORT:-5173}:5173"
+    depends_on:
+      - app
+
+volumes:
+  db-data:
+  workspace-repo:
