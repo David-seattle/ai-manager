@@ -1,0 +1,20 @@
+.tag {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  margin: 0 0.25rem 0.125rem 0;
+  font-size: 0.75rem;
+  background: #dbeafe;
+  color: #1e40af;
+  border-radius: 9999px;
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.detail p {
+  margin: 0.25rem 0 0;
+  color: #4b5563;
+}
