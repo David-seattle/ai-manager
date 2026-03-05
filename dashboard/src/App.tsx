@@ -1,8 +1,14 @@
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import Landing from "./pages/Landing";
+import WorkItemDetail from "./pages/WorkItemDetail";
+import NotFound from "./pages/NotFound";
+
+export const router = createBrowserRouter([
+  { path: "/", element: <Landing /> },
+  { path: "/workitem/:id", element: <WorkItemDetail /> },
+  { path: "*", element: <NotFound /> },
+]);
+
 export default function App() {
-  return (
-    <main>
-      <h1>AI Manager</h1>
-      <p>Dashboard coming soon.</p>
-    </main>
-  );
+  return <RouterProvider router={router} />;
 }
