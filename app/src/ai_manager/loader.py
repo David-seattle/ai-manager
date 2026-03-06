@@ -81,7 +81,7 @@ def loader_loop(
                 if transcript_store and anthropic_client:
                     sync_sessions(conn, transcript_store, anthropic_client)
                 if cxdb_client:
-                    sync_to_cxdb(conn, cxdb_client)
+                    sync_to_cxdb(conn, cxdb_client, transcript_store=transcript_store)
             except Exception:
                 logger.exception("Sync cycle failed")
             time.sleep(interval)

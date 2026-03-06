@@ -1,9 +1,16 @@
 """Load workspace session data into CXDB as contexts and turns."""
 
+from __future__ import annotations
+
 import logging
 import sqlite3
+from typing import TYPE_CHECKING
 
 from .cxdb_client import CxdbClient
+from .transcript_parser import parse_transcript
+
+if TYPE_CHECKING:
+    from .s3_client import TranscriptStore
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +18,7 @@ logger = logging.getLogger(__name__)
 TYPE_SESSION_META = "ai_manager.session_metadata"
 TYPE_DOCUMENT = "ai_manager.document"
 TYPE_WORK_ITEM = "ai_manager.work_item"
+TYPE_TRANSCRIPT_TURN = "ai_manager.transcript_turn"
 
 
 def _get_sessions(conn: sqlite3.Connection) -> list[dict]:
@@ -66,7 +74,28 @@ def _ensure_sync_table(conn: sqlite3.Connection) -> None:
     )
 
 
-def sync_to_cxdb(conn: sqlite3.Connection, cxdb: CxdbClient) -> int:
+def _load_transcript_turns(
+    transcript_store: TranscriptStore | None,
+    session_id: str,
+) -> list[dict]:
+    if transcript_store is None:
+        return []
+    try:
+        raw = transcript_store.download_transcript(session_id)
+    except Exception:
+        logger.warning("Could not download transcript for session %s", session_id)
+        return []
+    return [
+        {"role": t.role, "content": t.content, "timestamp": t.timestamp}
+        for t in parse_transcript(raw)
+    ]
+
+
+def sync_to_cxdb(
+    conn: sqlite3.Connection,
+    cxdb: CxdbClient,
+    transcript_store: TranscriptStore | None = None,
+) -> int:
     _ensure_sync_table(conn)
     synced = _get_synced_sessions(conn)
     sessions = _get_sessions(conn)
@@ -80,6 +109,8 @@ def sync_to_cxdb(conn: sqlite3.Connection, cxdb: CxdbClient) -> int:
         work_item_ids = session["work_item_ids"]
         if not work_item_ids:
             work_item_ids = ["_untagged"]
+
+        transcript_turns = _load_transcript_turns(transcript_store, sid)
 
         context_ids = []
         for wid in work_item_ids:
@@ -103,6 +134,9 @@ def sync_to_cxdb(conn: sqlite3.Connection, cxdb: CxdbClient) -> int:
                         "filename": doc["filename"],
                         "content": doc["content"],
                     })
+
+                for turn_data in transcript_turns:
+                    cxdb.append_turn(ctx.context_id, TYPE_TRANSCRIPT_TURN, turn_data)
 
             except Exception:
                 logger.exception("Failed to sync session %s for work item %s", sid, wid)
