@@ -1,3 +1,4 @@
+import json
 import sqlite3
 
 from ai_manager.cxdb_loader import sync_to_cxdb
@@ -137,3 +138,163 @@ def test_sync_no_sessions_is_noop():
     cxdb = FakeCxdbClient()
     sync_to_cxdb(conn, cxdb)
     assert len(cxdb.contexts) == 0
+
+
+def _jsonl(*entries):
+    return "\n".join(json.dumps(e) for e in entries)
+
+
+class FakeTranscriptStore:
+    def __init__(self, transcripts=None):
+        self._transcripts = transcripts or {}
+
+    def download_transcript(self, session_id):
+        raw = self._transcripts.get(session_id)
+        if raw is None:
+            raise RuntimeError(f"Transcript not found: {session_id}")
+        return raw
+
+
+def test_sync_appends_transcript_turns():
+    conn = _make_db()
+    transcript = _jsonl(
+        {"type": "user", "timestamp": "2025-01-01T10:00:00Z",
+         "message": {"content": "Help me debug"}},
+        {"type": "assistant", "timestamp": "2025-01-01T10:00:05Z",
+         "message": {"content": [{"type": "text", "text": "Sure, let me look"}]}},
+    )
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="Debug session",
+            work_item_ids=["aim-abc1"],
+        ))
+    store = FakeTranscriptStore(transcripts={"sess-1": transcript})
+    cxdb = FakeCxdbClient()
+    sync_to_cxdb(conn, cxdb, transcript_store=store)
+
+    all_turns = []
+    for turns in cxdb.turns.values():
+        all_turns.extend(turns)
+    transcript_turns = [t for t in all_turns if t["type_id"] == "ai_manager.transcript_turn"]
+    assert len(transcript_turns) == 2
+    assert transcript_turns[0]["data"]["role"] == "user"
+    assert transcript_turns[0]["data"]["content"] == "Help me debug"
+    assert transcript_turns[0]["data"]["timestamp"] == "2025-01-01T10:00:00Z"
+    assert transcript_turns[1]["data"]["role"] == "assistant"
+    assert transcript_turns[1]["data"]["content"] == "Sure, let me look"
+
+
+def test_sync_without_transcript_store_skips_turns():
+    conn = _make_db()
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="No transcripts",
+            work_item_ids=["aim-abc1"],
+        ))
+    cxdb = FakeCxdbClient()
+    sync_to_cxdb(conn, cxdb)
+
+    all_turns = []
+    for turns in cxdb.turns.values():
+        all_turns.extend(turns)
+    transcript_turns = [t for t in all_turns if t["type_id"] == "ai_manager.transcript_turn"]
+    assert len(transcript_turns) == 0
+
+
+def test_sync_transcript_download_error_continues():
+    conn = _make_db()
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="Error session",
+            work_item_ids=["aim-abc1"],
+        ))
+    store = FakeTranscriptStore(transcripts={})  # no transcript available
+    cxdb = FakeCxdbClient()
+    sync_to_cxdb(conn, cxdb, transcript_store=store)
+
+    # Should still create the context with metadata, just no transcript turns
+    assert len(cxdb.contexts) == 1
+    all_turns = []
+    for turns in cxdb.turns.values():
+        all_turns.extend(turns)
+    meta_turns = [t for t in all_turns if t["type_id"] == "ai_manager.session_metadata"]
+    assert len(meta_turns) == 1
+    transcript_turns = [t for t in all_turns if t["type_id"] == "ai_manager.transcript_turn"]
+    assert len(transcript_turns) == 0
+
+
+def test_sync_empty_transcript_no_transcript_turns():
+    conn = _make_db()
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="Empty transcript",
+            work_item_ids=["aim-abc1"],
+        ))
+    store = FakeTranscriptStore(transcripts={"sess-1": ""})
+    cxdb = FakeCxdbClient()
+    sync_to_cxdb(conn, cxdb, transcript_store=store)
+
+    assert len(cxdb.contexts) == 1
+    all_turns = []
+    for turns in cxdb.turns.values():
+        all_turns.extend(turns)
+    meta_turns = [t for t in all_turns if t["type_id"] == "ai_manager.session_metadata"]
+    assert len(meta_turns) == 1
+    transcript_turns = [t for t in all_turns if t["type_id"] == "ai_manager.transcript_turn"]
+    assert len(transcript_turns) == 0
+
+
+def test_sync_ten_turn_transcript():
+    conn = _make_db()
+    entries = []
+    for i in range(10):
+        role = "user" if i % 2 == 0 else "assistant"
+        entries.append({
+            "type": role,
+            "timestamp": f"2025-01-01T10:{i:02d}:00Z",
+            "message": {"content": f"Message {i}"},
+        })
+    transcript = _jsonl(*entries)
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="Long session",
+            work_item_ids=["aim-abc1"],
+        ))
+    store = FakeTranscriptStore(transcripts={"sess-1": transcript})
+    cxdb = FakeCxdbClient()
+    sync_to_cxdb(conn, cxdb, transcript_store=store)
+
+    all_turns = []
+    for turns in cxdb.turns.values():
+        all_turns.extend(turns)
+    transcript_turns = [t for t in all_turns if t["type_id"] == "ai_manager.transcript_turn"]
+    assert len(transcript_turns) == 10
+    for i, turn in enumerate(transcript_turns):
+        expected_role = "user" if i % 2 == 0 else "assistant"
+        assert turn["data"]["role"] == expected_role
+        assert turn["data"]["content"] == f"Message {i}"
+
+
+def test_sync_transcript_turns_tagged_by_work_item():
+    conn = _make_db()
+    transcript = _jsonl(
+        {"type": "user", "timestamp": "2025-01-01T10:00:00Z",
+         "message": {"content": "Hello"}},
+    )
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="Multi-item",
+            work_item_ids=["aim-abc1", "EN-1234"],
+        ))
+    store = FakeTranscriptStore(transcripts={"sess-1": transcript})
+    cxdb = FakeCxdbClient()
+    sync_to_cxdb(conn, cxdb, transcript_store=store)
+
+    # Both contexts should have the transcript turn
+    assert len(cxdb.contexts) == 2
+    for ctx_id in cxdb.contexts:
+        transcript_turns = [
+            t for t in cxdb.turns[ctx_id]
+            if t["type_id"] == "ai_manager.transcript_turn"
+        ]
+        assert len(transcript_turns) == 1
