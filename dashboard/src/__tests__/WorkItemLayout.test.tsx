@@ -47,7 +47,7 @@ describe("WorkItemLayout", () => {
 
   it("renders sidebar and overview on successful fetch", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify(mockWorkItem), {
+      new Response(JSON.stringify([mockWorkItem]), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
@@ -61,6 +61,22 @@ describe("WorkItemLayout", () => {
     expect(screen.getByRole("navigation", { name: /work item/i })).toBeInTheDocument();
   });
 
+  it("shows not-found message on empty array", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    renderWithRoute("nonexistent");
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /not found/i })).toBeInTheDocument();
+    });
+    expect(screen.getByText(/nonexistent/)).toBeInTheDocument();
+  });
+
   it("shows not-found message on 404", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response("", { status: 404 }),
@@ -71,7 +87,6 @@ describe("WorkItemLayout", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: /not found/i })).toBeInTheDocument();
     });
-    expect(screen.getByText(/nonexistent/)).toBeInTheDocument();
   });
 
   it("shows not-found message on network error", async () => {
@@ -86,7 +101,7 @@ describe("WorkItemLayout", () => {
 
   it("fetches from correct API URL", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify(mockWorkItem), {
+      new Response(JSON.stringify([mockWorkItem]), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
@@ -95,7 +110,9 @@ describe("WorkItemLayout", () => {
     renderWithRoute("aim-5678");
 
     await waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledWith("/api/ai_manager/work_items/aim-5678.json");
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/ai_manager/work_items.json?id=aim-5678&_shape=array",
+      );
     });
   });
 });
