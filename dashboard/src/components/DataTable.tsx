@@ -1,5 +1,14 @@
-import { useState, useMemo, type ReactNode } from "react";
-import styles from "./DataTable.module.css";
+import { useState, useMemo, type ReactNode, type CSSProperties } from "react";
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHeaderCell,
+  TableBody,
+  TableCell,
+  Input,
+  Text,
+} from "@fluentui/react-components";
 
 export interface Column<T> {
   key: keyof T & string;
@@ -17,6 +26,46 @@ interface Props<T> {
 }
 
 type SortDir = "asc" | "desc";
+
+const headerRowStyle: CSSProperties = {
+  fontWeight: 600,
+  backgroundColor: "#f5f5f5",
+};
+
+const headerCellStyle: CSSProperties = {
+  fontWeight: 600,
+  color: "#374151",
+  userSelect: "none",
+};
+
+const sortableStyle: CSSProperties = {
+  ...headerCellStyle,
+  cursor: "pointer",
+};
+
+const expandColStyle: CSSProperties = {
+  width: 32,
+  padding: "4px",
+};
+
+const expandBtnStyle: CSSProperties = {
+  background: "none",
+  border: "none",
+  cursor: "pointer",
+  fontSize: 12,
+  padding: 4,
+  color: "#6b7280",
+};
+
+const detailRowStyle: CSSProperties = {
+  backgroundColor: "#f8fafc",
+};
+
+const detailContentStyle: CSSProperties = {
+  padding: "12px 16px",
+  fontSize: 14,
+  color: "#374151",
+};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function DataTable<T extends Record<string, any>>({
@@ -73,69 +122,72 @@ export default function DataTable<T extends Record<string, any>>({
   }
 
   return (
-    <div className={styles.wrapper}>
+    <div>
       {filterKeys && filterKeys.length > 0 && (
-        <input
-          type="text"
-          className={styles.filter}
+        <Input
           placeholder="Filter..."
           value={filter}
-          onChange={(e) => setFilter(e.target.value)}
+          onChange={(_e, d) => setFilter(d.value)}
           aria-label="Filter table"
+          style={{ width: "100%", marginBottom: 12 }}
         />
       )}
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            {renderExpanded && <th className={styles.expandCol} />}
-            {columns.map((col) => (
-              <th
-                key={col.key}
-                onClick={col.sortable ? () => handleSort(col.key) : undefined}
-                className={col.sortable ? styles.sortable : undefined}
-                aria-sort={
-                  sortKey === col.key
-                    ? sortDir === "asc"
-                      ? "ascending"
-                      : "descending"
-                    : undefined
-                }
-              >
-                {col.header}
-                {sortKey === col.key && (
-                  <span className={styles.sortIndicator}>
-                    {sortDir === "asc" ? " \u25B2" : " \u25BC"}
-                  </span>
-                )}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.length === 0 ? (
-            <tr>
-              <td
-                colSpan={columns.length + (renderExpanded ? 1 : 0)}
-                className={styles.empty}
-              >
-                {emptyMessage}
-              </td>
-            </tr>
-          ) : (
-            sorted.map((row, idx) => (
-              <DataTableRow
-                key={idx}
-                row={row}
-                idx={idx}
-                columns={columns}
-                renderExpanded={renderExpanded}
-                expanded={expandedRows.has(idx)}
-                onToggle={toggleExpand}
-              />
-            ))
-          )}
-        </tbody>
-      </table>
+      <div style={{ overflowX: "auto" }}>
+        <Table style={{ tableLayout: "auto", minWidth: "100%" }}>
+          <TableHeader>
+            <TableRow style={headerRowStyle}>
+              {renderExpanded && <TableHeaderCell style={expandColStyle} />}
+              {columns.map((col) => (
+                <TableHeaderCell
+                  key={col.key}
+                  onClick={col.sortable ? () => handleSort(col.key) : undefined}
+                  style={col.sortable ? sortableStyle : headerCellStyle}
+                  aria-sort={
+                    sortKey === col.key
+                      ? sortDir === "asc"
+                        ? "ascending"
+                        : "descending"
+                      : undefined
+                  }
+                >
+                  {col.header}
+                  {sortKey === col.key && (
+                    <span style={{ fontSize: 11, marginLeft: 4 }}>
+                      {sortDir === "asc" ? "\u25B2" : "\u25BC"}
+                    </span>
+                  )}
+                </TableHeaderCell>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sorted.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={columns.length + (renderExpanded ? 1 : 0)}
+                  style={{ textAlign: "center", padding: 32 }}
+                >
+                  <Text style={{ color: "#9ca3af", fontStyle: "italic" }}>
+                    {emptyMessage}
+                  </Text>
+                </TableCell>
+              </TableRow>
+            ) : (
+              sorted.map((row, idx) => (
+                <DataTableRow
+                  key={idx}
+                  row={row}
+                  idx={idx}
+                  columns={columns}
+                  renderExpanded={renderExpanded}
+                  expanded={expandedRows.has(idx)}
+                  onToggle={toggleExpand}
+                />
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }
@@ -158,30 +210,32 @@ function DataTableRow<T extends Record<string, any>>({
 }) {
   return (
     <>
-      <tr className={expanded ? styles.expandedRow : undefined}>
+      <TableRow
+        style={expanded ? { backgroundColor: "#f0f7ff" } : undefined}
+      >
         {renderExpanded && (
-          <td className={styles.expandCol}>
+          <TableCell style={expandColStyle}>
             <button
-              className={styles.expandBtn}
+              style={expandBtnStyle}
               onClick={() => onToggle(idx)}
               aria-label={expanded ? "Collapse row" : "Expand row"}
             >
               {expanded ? "\u25BC" : "\u25B6"}
             </button>
-          </td>
+          </TableCell>
         )}
         {columns.map((col) => (
-          <td key={col.key}>
+          <TableCell key={col.key}>
             {col.render ? col.render(row[col.key], row) : String(row[col.key] ?? "")}
-          </td>
+          </TableCell>
         ))}
-      </tr>
+      </TableRow>
       {expanded && renderExpanded && (
-        <tr className={styles.detailRow}>
-          <td colSpan={columns.length + 1}>
-            <div className={styles.detailContent}>{renderExpanded(row)}</div>
-          </td>
-        </tr>
+        <TableRow style={detailRowStyle}>
+          <TableCell colSpan={columns.length + 1}>
+            <div style={detailContentStyle}>{renderExpanded(row)}</div>
+          </TableCell>
+        </TableRow>
       )}
     </>
   );

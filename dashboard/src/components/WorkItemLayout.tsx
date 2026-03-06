@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { useParams, Outlet, Navigate } from "react-router-dom";
+import { useParams, Navigate } from "react-router-dom";
+import { Spinner, Text } from "@fluentui/react-components";
 import { WorkItemContext } from "../context/WorkItemContext";
 import type { WorkItem } from "../types/api";
-import Sidebar from "./Sidebar";
-import styles from "./WorkItemLayout.module.css";
+import Layout from "./Layout";
 
 export default function WorkItemLayout() {
   const { id } = useParams<{ id: string }>();
@@ -25,10 +25,11 @@ export default function WorkItemLayout() {
         }
         const data: WorkItem[] = await res.json();
         if (!cancelled) {
-          if (data.length === 0) {
+          const first = data[0];
+          if (data.length === 0 || !first) {
             setError("not_found");
           } else {
-            setItem(data[0]);
+            setItem(first);
           }
         }
       } catch {
@@ -44,28 +45,33 @@ export default function WorkItemLayout() {
     };
   }, [id]);
 
-  if (loading) return <p>Loading...</p>;
+  if (loading) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", padding: 48 }}>
+        <Spinner label="Loading..." />
+      </div>
+    );
+  }
 
   if (error) {
     return (
-      <div className={styles.error}>
-        <h1>Work item not found</h1>
-        <p>
+      <div style={{ padding: 32 }}>
+        <Text as="h1" size={700} weight="bold" block style={{ marginBottom: 8 }}>
+          Work item not found
+        </Text>
+        <Text block style={{ color: "#666", marginBottom: 16 }}>
           No work item with ID &ldquo;{id}&rdquo; exists.
-        </p>
-        <a href="/">Back to search</a>
+        </Text>
+        <a href="/" style={{ color: "#106EBE", textDecoration: "none" }}>
+          Back to search
+        </a>
       </div>
     );
   }
 
   return (
     <WorkItemContext.Provider value={{ item, loading, error }}>
-      <div className={styles.layout}>
-        <Sidebar workItemId={id!} />
-        <main className={styles.content}>
-          <Outlet />
-        </main>
-      </div>
+      <Layout workItemId={id!} />
     </WorkItemContext.Provider>
   );
 }

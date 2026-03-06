@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Spinner, Text } from "@fluentui/react-components";
 import { useWorkItem } from "../hooks/useWorkItem";
 import type { Document } from "../types/api";
 
@@ -47,20 +48,32 @@ export default function DocumentPage() {
 
   const title = DOC_TITLES[docType ?? ""] ?? docType ?? "Document";
 
-  if (loading) return <p>Loading...</p>;
-  if (error) return <p>Failed to load document.</p>;
+  if (loading) return <Spinner label="Loading..." />;
+  if (error) {
+    return (
+      <Text block style={{ color: "red" }}>
+        Failed to load document.
+      </Text>
+    );
+  }
   if (!doc) {
     return (
       <div>
-        <h1>{title}</h1>
-        <p>No document available.</p>
+        <Text as="h1" size={700} weight="bold" block>
+          {title}
+        </Text>
+        <Text block style={{ color: "#666" }}>
+          No document available.
+        </Text>
       </div>
     );
   }
 
   return (
     <div>
-      <h1>{title}</h1>
+      <Text as="h1" size={700} weight="bold" block style={{ marginBottom: 16 }}>
+        {title}
+      </Text>
       <Markdown remarkPlugins={[remarkGfm]}>{doc.content}</Markdown>
     </div>
   );
