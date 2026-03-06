@@ -1,10 +1,18 @@
 import json
 import logging
+import pathlib
 import sqlite3
+from unittest.mock import patch
 
 import requests
 
-from ai_manager.cxdb_loader import sync_to_cxdb
+from ai_manager.cxdb_loader import (
+    sync_to_cxdb,
+    _ensure_metadata_table,
+    _get_last_commit_sha,
+    _set_last_commit_sha,
+    _is_valid_commit,
+)
 from ai_manager.schema import create_tables, upsert_session, upsert_work_item, upsert_document
 from ai_manager.models import Session, WorkItem, Document
 
@@ -416,3 +424,236 @@ def test_sync_handles_append_turn_failure():
     # Session should still be counted as synced (context was created)
     assert count == 1
     assert len(cxdb.contexts) == 1
+
+
+# --- Incremental sync (git commit SHA tracking) tests ---
+
+FAKE_SHA = "a" * 40
+FAKE_SHA_2 = "b" * 40
+FAKE_WORKSPACE = pathlib.Path("/tmp/fake-workspace")
+
+
+def _head_returns(sha):
+    return patch("ai_manager.cxdb_loader._get_current_head", return_value=sha)
+
+
+def _valid_commit(result=True):
+    return patch("ai_manager.cxdb_loader._is_valid_commit", return_value=result)
+
+
+def test_sync_stores_commit_sha_after_first_run():
+    conn = _make_db()
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="Work",
+            work_item_ids=["aim-abc1"],
+        ))
+    cxdb = FakeCxdbClient()
+    with _head_returns(FAKE_SHA), _valid_commit():
+        sync_to_cxdb(conn, cxdb, workspace_dir=FAKE_WORKSPACE)
+    assert _get_last_commit_sha(conn) == FAKE_SHA
+
+
+def test_sync_sha_updated_after_sync():
+    conn = _make_db()
+    _ensure_metadata_table(conn)
+    _set_last_commit_sha(conn, FAKE_SHA)
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="Work",
+            work_item_ids=["aim-abc1"],
+        ))
+    cxdb = FakeCxdbClient()
+    with _head_returns(FAKE_SHA_2), _valid_commit():
+        sync_to_cxdb(conn, cxdb, workspace_dir=FAKE_WORKSPACE)
+    assert _get_last_commit_sha(conn) == FAKE_SHA_2
+
+
+def test_sync_incremental_head_unchanged_only_new():
+    conn = _make_db()
+    cxdb = FakeCxdbClient()
+    # First run: sync 2 sessions
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="A",
+            work_item_ids=["aim-abc1"],
+        ))
+        upsert_session(conn, Session(
+            session_id="sess-2", etag="e2", summary="B",
+            work_item_ids=["aim-abc2"],
+        ))
+    with _head_returns(FAKE_SHA), _valid_commit():
+        count = sync_to_cxdb(conn, cxdb, workspace_dir=FAKE_WORKSPACE)
+    assert count == 2
+
+    # Add a new session, HEAD unchanged
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-3", etag="e3", summary="C",
+            work_item_ids=["aim-abc3"],
+        ))
+    with _head_returns(FAKE_SHA), _valid_commit():
+        count = sync_to_cxdb(conn, cxdb, workspace_dir=FAKE_WORKSPACE)
+    assert count == 1
+    tags = [meta["tag"] for meta in cxdb.contexts.values()]
+    assert "aim-abc3" in tags
+
+
+def test_sync_full_scan_on_first_run():
+    conn = _make_db()
+    with conn:
+        for i in range(5):
+            upsert_session(conn, Session(
+                session_id=f"sess-{i}", etag=f"e{i}", summary=f"Work {i}",
+                work_item_ids=[f"aim-abc{i}"],
+            ))
+    cxdb = FakeCxdbClient()
+    with _head_returns(FAKE_SHA), _valid_commit():
+        count = sync_to_cxdb(conn, cxdb, workspace_dir=FAKE_WORKSPACE)
+    assert count == 5
+
+
+def test_sync_full_scan_on_invalid_sha(caplog):
+    conn = _make_db()
+    _ensure_metadata_table(conn)
+    _set_last_commit_sha(conn, "deadbeef" * 5)  # 40 chars but invalid commit
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="Work",
+            work_item_ids=["aim-abc1"],
+        ))
+    cxdb = FakeCxdbClient()
+    with _head_returns(FAKE_SHA_2), _valid_commit(False):
+        with caplog.at_level(logging.WARNING):
+            count = sync_to_cxdb(conn, cxdb, workspace_dir=FAKE_WORKSPACE)
+    assert count == 1
+    assert any("no longer valid" in r.message for r in caplog.records)
+
+
+def test_sync_full_scan_on_git_failure(caplog):
+    conn = _make_db()
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="Work",
+            work_item_ids=["aim-abc1"],
+        ))
+    cxdb = FakeCxdbClient()
+    with _head_returns(None):
+        with caplog.at_level(logging.WARNING):
+            count = sync_to_cxdb(conn, cxdb, workspace_dir=FAKE_WORKSPACE)
+    assert count == 1
+    assert any("Could not determine git HEAD" in r.message for r in caplog.records)
+
+
+def test_sync_git_failure_does_not_store_sha():
+    conn = _make_db()
+    _ensure_metadata_table(conn)
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="Work",
+            work_item_ids=["aim-abc1"],
+        ))
+    cxdb = FakeCxdbClient()
+    with _head_returns(None):
+        sync_to_cxdb(conn, cxdb, workspace_dir=FAKE_WORKSPACE)
+    assert _get_last_commit_sha(conn) is None
+
+
+def test_sync_empty_workspace_stores_sha():
+    conn = _make_db()
+    cxdb = FakeCxdbClient()
+    with _head_returns(FAKE_SHA), _valid_commit():
+        count = sync_to_cxdb(conn, cxdb, workspace_dir=FAKE_WORKSPACE)
+    assert count == 0
+    assert _get_last_commit_sha(conn) == FAKE_SHA
+
+
+def test_sync_reindex_modified_session():
+    conn = _make_db()
+    cxdb = FakeCxdbClient()
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="Original",
+            work_item_ids=["aim-abc1"],
+        ))
+    with _head_returns(FAKE_SHA), _valid_commit():
+        count = sync_to_cxdb(conn, cxdb, workspace_dir=FAKE_WORKSPACE)
+    assert count == 1
+
+    # Modify session etag (simulates session data changed)
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1-modified", summary="Updated",
+            work_item_ids=["aim-abc1"],
+        ))
+    with _head_returns(FAKE_SHA_2), _valid_commit():
+        count = sync_to_cxdb(conn, cxdb, workspace_dir=FAKE_WORKSPACE)
+    assert count == 1
+    # Should have created a second context for the re-indexed session
+    assert len(cxdb.contexts) == 2
+
+
+def test_sync_no_workspace_dir_backward_compatible():
+    conn = _make_db()
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="Work",
+            work_item_ids=["aim-abc1"],
+        ))
+    cxdb = FakeCxdbClient()
+    count = sync_to_cxdb(conn, cxdb)
+    assert count == 1
+    assert len(cxdb.contexts) == 1
+
+
+def test_sha_hex_validation():
+    assert not _is_valid_commit(FAKE_WORKSPACE, "not-a-sha")
+    assert not _is_valid_commit(FAKE_WORKSPACE, "abc123")
+    assert not _is_valid_commit(FAKE_WORKSPACE, "ZZZZ" * 10)
+
+
+def test_metadata_table_created_idempotently():
+    conn = _make_db()
+    _ensure_metadata_table(conn)
+    _ensure_metadata_table(conn)  # should not raise
+    assert _get_last_commit_sha(conn) is None
+
+
+def test_sync_state_etag_stored():
+    conn = _make_db()
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="my-etag-123", summary="Work",
+            work_item_ids=["aim-abc1"],
+        ))
+    cxdb = FakeCxdbClient()
+    with _head_returns(FAKE_SHA), _valid_commit():
+        sync_to_cxdb(conn, cxdb, workspace_dir=FAKE_WORKSPACE)
+    row = conn.execute(
+        "SELECT etag FROM cxdb_sync_state WHERE session_id = 'sess-1'"
+    ).fetchone()
+    assert row[0] == "my-etag-123"
+
+
+def test_sync_head_unchanged_skips_unmodified():
+    """When HEAD is unchanged, only unsynced sessions are processed (not etag-changed)."""
+    conn = _make_db()
+    cxdb = FakeCxdbClient()
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="A",
+            work_item_ids=["aim-abc1"],
+        ))
+    with _head_returns(FAKE_SHA), _valid_commit():
+        sync_to_cxdb(conn, cxdb, workspace_dir=FAKE_WORKSPACE)
+
+    # Modify the etag but keep HEAD the same
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1-changed", summary="A modified",
+            work_item_ids=["aim-abc1"],
+        ))
+    with _head_returns(FAKE_SHA), _valid_commit():
+        count = sync_to_cxdb(conn, cxdb, workspace_dir=FAKE_WORKSPACE)
+    # HEAD unchanged → fast path → only new sessions (none here)
+    assert count == 0
