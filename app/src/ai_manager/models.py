@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 class WorkItem:
     id: str
     source: str  # "beads" or "jira"
-    title: str
+    issue_type: str = ""
+    title: str = ""
     description: str = ""
     path: str = ""
     status: str = ""

@@ -7,6 +7,7 @@ import Overview from "../pages/Overview";
 const mockItem = {
   id: "aim-1234",
   source: "beads",
+  issue_type: "task",
   title: "Test Work Item",
   description: "This is a **bold** description.",
   path: "/path",

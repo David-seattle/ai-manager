@@ -8,6 +8,7 @@ import QuestionsPage from "../pages/QuestionsPage";
 const mockItem = {
   id: "aim-1234",
   source: "beads",
+  issue_type: "task",
   title: "Test",
   description: "",
   path: "",
