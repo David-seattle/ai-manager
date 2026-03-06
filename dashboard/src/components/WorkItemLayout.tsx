@@ -16,13 +16,21 @@ export default function WorkItemLayout() {
 
     async function fetchItem() {
       try {
-        const res = await fetch(`/api/ai_manager/work_items/${id}.json`);
+        const res = await fetch(
+          `/api/ai_manager/work_items.json?id=${id}&_shape=array`,
+        );
         if (!res.ok) {
           if (!cancelled) setError("not_found");
           return;
         }
-        const data: WorkItem = await res.json();
-        if (!cancelled) setItem(data);
+        const data: WorkItem[] = await res.json();
+        if (!cancelled) {
+          if (data.length === 0) {
+            setError("not_found");
+          } else {
+            setItem(data[0]);
+          }
+        }
       } catch {
         if (!cancelled) setError("network");
       } finally {
