@@ -9,6 +9,7 @@ export default defineConfig({
       "/api": {
         target: "http://app:8001",
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ""),
       },
       "/transcript": {
         target: "http://app:8002",

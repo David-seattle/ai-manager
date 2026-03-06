@@ -8,6 +8,10 @@ logger = logging.getLogger(__name__)
 def sync_workspace(
     repo_url: str, workspace_dir: pathlib.Path, github_token: str | None = None
 ) -> None:
+    if not repo_url:
+        logger.info("No WORKSPACE_REPO_URL set, skipping git sync (using bind mount)")
+        return
+
     if github_token and repo_url.startswith("https://"):
         repo_url = repo_url.replace("https://", f"https://x-access-token:{github_token}@")
 
