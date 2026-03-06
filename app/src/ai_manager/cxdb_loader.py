@@ -6,6 +6,8 @@ import logging
 import sqlite3
 from typing import TYPE_CHECKING
 
+import requests
+
 from .cxdb_client import CxdbClient
 from .transcript_parser import parse_transcript
 
@@ -138,6 +140,12 @@ def sync_to_cxdb(
                 for turn_data in transcript_turns:
                     cxdb.append_turn(ctx.context_id, TYPE_TRANSCRIPT_TURN, turn_data)
 
+            except requests.ConnectionError:
+                logger.error("CXDB unreachable, aborting sync for session %s", sid)
+                return count
+            except requests.HTTPError:
+                logger.warning("HTTP error syncing session %s for work item %s, skipping", sid, wid)
+                continue
             except Exception:
                 logger.exception("Failed to sync session %s for work item %s", sid, wid)
                 continue

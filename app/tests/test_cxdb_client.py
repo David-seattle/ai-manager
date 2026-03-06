@@ -1,3 +1,5 @@
+import pytest
+import requests
 import responses
 
 from ai_manager.cxdb_client import CxdbClient
@@ -81,3 +83,38 @@ def test_healthy_false():
     responses.get(f"{CXDB_URL}/v1/contexts", body=responses.ConnectionError())
     client = CxdbClient(CXDB_URL)
     assert not client.healthy()
+
+
+# --- Error propagation tests ---
+
+
+@responses.activate
+def test_create_context_raises_on_connection_error():
+    responses.post(f"{CXDB_URL}/v1/contexts/create", body=responses.ConnectionError())
+    client = CxdbClient(CXDB_URL)
+    with pytest.raises(requests.ConnectionError):
+        client.create_context(tag="test")
+
+
+@responses.activate
+def test_create_context_raises_on_http_500():
+    responses.post(f"{CXDB_URL}/v1/contexts/create", status=500)
+    client = CxdbClient(CXDB_URL)
+    with pytest.raises(requests.HTTPError):
+        client.create_context(tag="test")
+
+
+@responses.activate
+def test_append_turn_raises_on_http_500():
+    responses.post(f"{CXDB_URL}/v1/contexts/42/append", status=500)
+    client = CxdbClient(CXDB_URL)
+    with pytest.raises(requests.HTTPError):
+        client.append_turn(42, "ai_manager.session_metadata", {"session_id": "s1"})
+
+
+@responses.activate
+def test_append_turn_raises_on_connection_error():
+    responses.post(f"{CXDB_URL}/v1/contexts/42/append", body=responses.ConnectionError())
+    client = CxdbClient(CXDB_URL)
+    with pytest.raises(requests.ConnectionError):
+        client.append_turn(42, "ai_manager.session_metadata", {"session_id": "s1"})

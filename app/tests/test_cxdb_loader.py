@@ -1,5 +1,8 @@
 import json
+import logging
 import sqlite3
+
+import requests
 
 from ai_manager.cxdb_loader import sync_to_cxdb
 from ai_manager.schema import create_tables, upsert_session, upsert_work_item, upsert_document
@@ -138,6 +141,9 @@ def test_sync_no_sessions_is_noop():
     cxdb = FakeCxdbClient()
     sync_to_cxdb(conn, cxdb)
     assert len(cxdb.contexts) == 0
+
+
+# --- Transcript turn tests ---
 
 
 def _jsonl(*entries):
@@ -298,3 +304,115 @@ def test_sync_transcript_turns_tagged_by_work_item():
             if t["type_id"] == "ai_manager.transcript_turn"
         ]
         assert len(transcript_turns) == 1
+
+
+# --- Error handling and resilience tests ---
+
+
+class ConnectionErrorCxdbClient(FakeCxdbClient):
+    """Raises ConnectionError on create_context to simulate CXDB unreachable."""
+
+    def create_context(self, base_turn_id=0, tag=""):
+        raise requests.ConnectionError("Connection refused")
+
+
+class HttpErrorCxdbClient(FakeCxdbClient):
+    """Raises HTTPError on create_context to simulate server error."""
+
+    def __init__(self):
+        super().__init__()
+        self._call_count = 0
+
+    def create_context(self, base_turn_id=0, tag=""):
+        self._call_count += 1
+        if self._call_count == 1:
+            raise requests.HTTPError("500 Server Error")
+        return super().create_context(base_turn_id, tag)
+
+
+class AppendTurnErrorCxdbClient(FakeCxdbClient):
+    """Raises HTTPError on append_turn to simulate partial failure."""
+
+    def append_turn(self, context_id, type_id, data, type_version=1):
+        raise requests.HTTPError("502 Bad Gateway")
+
+
+def test_sync_aborts_on_connection_error():
+    """When CXDB is unreachable, sync should abort and return 0."""
+    conn = _make_db()
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="Work",
+            work_item_ids=["aim-abc1"],
+        ))
+        upsert_session(conn, Session(
+            session_id="sess-2", etag="e2", summary="More work",
+            work_item_ids=["aim-abc2"],
+        ))
+    cxdb = ConnectionErrorCxdbClient()
+    count = sync_to_cxdb(conn, cxdb)
+    assert count == 0
+    assert len(cxdb.contexts) == 0
+
+
+def test_sync_logs_error_on_connection_failure(caplog):
+    """ConnectionError should log at ERROR level."""
+    conn = _make_db()
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="Work",
+            work_item_ids=["aim-abc1"],
+        ))
+    cxdb = ConnectionErrorCxdbClient()
+    with caplog.at_level(logging.ERROR):
+        sync_to_cxdb(conn, cxdb)
+    assert any("CXDB unreachable" in r.message for r in caplog.records)
+
+
+def test_sync_skips_session_on_http_error():
+    """HTTPError on one session should skip it but continue to the next."""
+    conn = _make_db()
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="Will fail",
+            work_item_ids=["aim-abc1"],
+        ))
+        upsert_session(conn, Session(
+            session_id="sess-2", etag="e2", summary="Will succeed",
+            work_item_ids=["aim-abc2"],
+        ))
+    cxdb = HttpErrorCxdbClient()
+    count = sync_to_cxdb(conn, cxdb)
+    # First session fails, second succeeds
+    assert count >= 1
+    tags = [meta["tag"] for meta in cxdb.contexts.values()]
+    assert "aim-abc2" in tags
+
+
+def test_sync_logs_warning_on_http_error(caplog):
+    """HTTPError should log at WARNING level, not ERROR."""
+    conn = _make_db()
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="Will fail",
+            work_item_ids=["aim-abc1"],
+        ))
+    cxdb = HttpErrorCxdbClient()
+    with caplog.at_level(logging.WARNING):
+        sync_to_cxdb(conn, cxdb)
+    assert any("sess-1" in r.message and r.levelno == logging.WARNING for r in caplog.records)
+
+
+def test_sync_handles_append_turn_failure():
+    """If append_turn fails, context is still created but turn is skipped."""
+    conn = _make_db()
+    with conn:
+        upsert_session(conn, Session(
+            session_id="sess-1", etag="e1", summary="Work",
+            work_item_ids=["aim-abc1"],
+        ))
+    cxdb = AppendTurnErrorCxdbClient()
+    count = sync_to_cxdb(conn, cxdb)
+    # Session should still be counted as synced (context was created)
+    assert count == 1
+    assert len(cxdb.contexts) == 1
