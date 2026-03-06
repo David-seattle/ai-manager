@@ -6,6 +6,7 @@ SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS work_items (
     id TEXT PRIMARY KEY,
     source TEXT NOT NULL,
+    issue_type TEXT DEFAULT '',
     title TEXT NOT NULL,
     description TEXT DEFAULT '',
     path TEXT DEFAULT '',
@@ -91,9 +92,9 @@ def delete_children(conn: sqlite3.Connection, work_item_id: str) -> None:
 def upsert_work_item(conn: sqlite3.Connection, item: WorkItem) -> None:
     conn.execute(
         """INSERT OR REPLACE INTO work_items
-        (id, source, title, description, path, status, priority, assignee, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (item.id, item.source, item.title, item.description, item.path,
+        (id, source, issue_type, title, description, path, status, priority, assignee, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (item.id, item.source, item.issue_type, item.title, item.description, item.path,
          item.status, item.priority, item.assignee, item.created_at, item.updated_at),
     )
 

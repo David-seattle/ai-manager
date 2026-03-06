@@ -1,6 +1,7 @@
 export interface WorkItem {
   id: string;
   source: string;
+  issue_type: string;
   title: string;
   description: string;
   path: string;

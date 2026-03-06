@@ -7,6 +7,7 @@ import DocumentPage from "../pages/DocumentPage";
 const mockItem = {
   id: "aim-1234",
   source: "beads",
+  issue_type: "task",
   title: "Test",
   description: "",
   path: "",
