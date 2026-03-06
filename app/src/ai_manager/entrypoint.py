@@ -17,7 +17,7 @@ DB_PATH = pathlib.Path(os.environ.get("DB_PATH", "/data/ai_manager.db"))
 WORKSPACE_DIR = pathlib.Path(os.environ.get("WORKSPACE_DIR", "/workspace"))
 REPO_URL = os.environ.get("WORKSPACE_REPO_URL", "")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
-DATASETTE_PORT = os.environ.get("DATASETTE_PORT", "8001")
+DATASETTE_PORT = "8001"  # Always 8001 inside container; host port set in docker-compose
 
 JIRA_BASE_URL = os.environ.get("JIRA_BASE_URL", "")
 JIRA_EMAIL = os.environ.get("JIRA_EMAIL", "")
