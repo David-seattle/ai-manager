@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from "react";
+import { Spinner, Text, Button } from "@fluentui/react-components";
 import { useWorkItem } from "../hooks/useWorkItem";
 import DataTable, { type Column } from "../components/DataTable";
 import type { Session, TranscriptEntry } from "../types/api";
-import styles from "./SessionsPage.module.css";
+import type { CSSProperties } from "react";
 
 const columns: Column<Session>[] = [
   {
@@ -44,6 +45,65 @@ function extractText(entry: TranscriptEntry): string {
 }
 
 const PAGE_SIZE = 50;
+
+const viewerStyle: CSSProperties = {
+  marginTop: 24,
+  border: "1px solid #d1d5db",
+  borderRadius: 8,
+  overflow: "hidden",
+};
+
+const viewerHeaderStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  padding: "12px 16px",
+  background: "#f5f5f5",
+  borderBottom: "1px solid #e0e0e0",
+};
+
+const messagesStyle: CSSProperties = {
+  padding: 16,
+  maxHeight: 600,
+  overflowY: "auto",
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+};
+
+const userMessageStyle: CSSProperties = {
+  padding: 12,
+  borderRadius: 6,
+  fontSize: 14,
+  background: "#eff6ff",
+  borderLeft: "3px solid #3b82f6",
+};
+
+const assistantMessageStyle: CSSProperties = {
+  padding: 12,
+  borderRadius: 6,
+  fontSize: 14,
+  background: "#f0fdf4",
+  borderLeft: "3px solid #22c55e",
+};
+
+const messageRoleStyle: CSSProperties = {
+  fontWeight: 600,
+  fontSize: 12,
+  color: "#6b7280",
+  marginBottom: 4,
+  textTransform: "uppercase",
+};
+
+const paginationStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  gap: 16,
+  padding: 12,
+  borderTop: "1px solid #e0e0e0",
+  background: "#f5f5f5",
+};
 
 export default function SessionsPage() {
   const { item } = useWorkItem();
@@ -122,66 +182,98 @@ export default function SessionsPage() {
   const totalPages = Math.ceil(transcript.length / PAGE_SIZE);
   const pagedEntries = transcript.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-  if (loading) return <p>Loading...</p>;
-  if (error) return <p>Failed to load sessions.</p>;
+  if (loading) return <Spinner label="Loading..." />;
+  if (error) {
+    return (
+      <Text block style={{ color: "red" }}>
+        Failed to load sessions.
+      </Text>
+    );
+  }
 
   return (
     <div>
-      <h1>Sessions</h1>
+      <Text as="h1" size={700} weight="bold" block style={{ marginBottom: 16 }}>
+        Sessions
+      </Text>
       <DataTable
         columns={columns}
         data={sessions}
         filterKeys={["summary"]}
         emptyMessage="No sessions found"
         renderExpanded={(s) => (
-          <div className={styles.expandedActions}>
-            <button
-              className={styles.viewBtn}
+          <div style={{ padding: "8px 0" }}>
+            <Button
+              appearance="primary"
+              size="small"
               onClick={() => loadTranscript(s.session_id)}
             >
               View Transcript
-            </button>
+            </Button>
           </div>
         )}
       />
 
       {activeSession && (
-        <div className={styles.viewer} data-testid="transcript-viewer">
-          <div className={styles.viewerHeader}>
-            <h2>Transcript: {activeSession}</h2>
-            <button
-              className={styles.closeBtn}
+        <div style={viewerStyle} data-testid="transcript-viewer">
+          <div style={viewerHeaderStyle}>
+            <Text as="h2" size={400} weight="semibold">
+              Transcript: {activeSession}
+            </Text>
+            <Button
+              appearance="subtle"
+              size="small"
               onClick={() => setActiveSession(null)}
               aria-label="Close transcript"
             >
               Close
-            </button>
+            </Button>
           </div>
 
-          {transcriptLoading && <p>Loading transcript...</p>}
-          {transcriptError && <p>Failed to load transcript.</p>}
+          {transcriptLoading && (
+            <div style={{ padding: 16 }}>
+              <Spinner label="Loading transcript..." />
+            </div>
+          )}
+          {transcriptError && (
+            <Text block style={{ padding: 16, color: "red" }}>
+              Failed to load transcript.
+            </Text>
+          )}
 
           {!transcriptLoading && !transcriptError && transcript.length > 0 && (
             <>
-              <div className={styles.messages}>
+              <div style={messagesStyle}>
                 {pagedEntries.map((entry, i) => (
                   <div
                     key={page * PAGE_SIZE + i}
-                    className={
+                    style={
                       entry.type === "user"
-                        ? styles.userMessage
-                        : styles.assistantMessage
+                        ? userMessageStyle
+                        : assistantMessageStyle
                     }
                   >
-                    <div className={styles.messageRole}>
+                    <div style={messageRoleStyle}>
                       {entry.type === "user" ? "User" : "Assistant"}
                       {entry.timestamp && (
-                        <span className={styles.messageTime}>
+                        <span
+                          style={{
+                            fontWeight: 400,
+                            marginLeft: 8,
+                            textTransform: "none" as const,
+                          }}
+                        >
                           {formatTimestamp(entry.timestamp)}
                         </span>
                       )}
                     </div>
-                    <div className={styles.messageText}>
+                    <div
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                        lineHeight: 1.5,
+                      }}
+                    >
                       {extractText(entry)}
                     </div>
                   </div>
@@ -189,22 +281,26 @@ export default function SessionsPage() {
               </div>
 
               {totalPages > 1 && (
-                <div className={styles.pagination}>
-                  <button
+                <div style={paginationStyle}>
+                  <Button
+                    appearance="subtle"
+                    size="small"
                     disabled={page === 0}
                     onClick={() => setPage((p) => p - 1)}
                   >
                     Previous
-                  </button>
-                  <span>
+                  </Button>
+                  <Text size={200} style={{ color: "#6b7280" }}>
                     Page {page + 1} of {totalPages}
-                  </span>
-                  <button
+                  </Text>
+                  <Button
+                    appearance="subtle"
+                    size="small"
                     disabled={page >= totalPages - 1}
                     onClick={() => setPage((p) => p + 1)}
                   >
                     Next
-                  </button>
+                  </Button>
                 </div>
               )}
             </>
@@ -212,7 +308,11 @@ export default function SessionsPage() {
 
           {!transcriptLoading &&
             !transcriptError &&
-            transcript.length === 0 && <p>No messages in this transcript.</p>}
+            transcript.length === 0 && (
+              <Text block style={{ padding: 16, color: "#666" }}>
+                No messages in this transcript.
+              </Text>
+            )}
         </div>
       )}
     </div>
