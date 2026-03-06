@@ -13,6 +13,7 @@ from .schema import (
     upsert_question,
     upsert_work_item,
 )
+from .cxdb_loader import sync_to_cxdb
 from .summarizer import sync_sessions
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,7 @@ def loader_loop(
     jira_client: JiraClient | None = None,
     transcript_store=None,
     anthropic_client=None,
+    cxdb_client=None,
     interval: int = 30,
 ) -> None:
     conn = sqlite3.connect(str(db_path))
@@ -78,6 +80,8 @@ def loader_loop(
                 run_sync_cycle(conn, workspace_dir, jira_client)
                 if transcript_store and anthropic_client:
                     sync_sessions(conn, transcript_store, anthropic_client)
+                if cxdb_client:
+                    sync_to_cxdb(conn, cxdb_client)
             except Exception:
                 logger.exception("Sync cycle failed")
             time.sleep(interval)

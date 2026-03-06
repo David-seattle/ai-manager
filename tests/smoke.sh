@@ -18,6 +18,8 @@ COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 # Use port 0 trick: let the OS pick free ports
 APP_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("",0)); print(s.getsockname()[1]); s.close()')
 DASH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("",0)); print(s.getsockname()[1]); s.close()')
+CXDB_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("",0)); print(s.getsockname()[1]); s.close()')
+CXDB_BIN_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("",0)); print(s.getsockname()[1]); s.close()')
 
 cleanup() {
     echo "Tearing down $PROJECT..."
@@ -26,10 +28,11 @@ cleanup() {
 trap cleanup EXIT
 
 echo "=== Smoke test: $PROJECT ==="
-echo "  App port: $APP_PORT, Dashboard port: $DASH_PORT"
+echo "  App port: $APP_PORT, Dashboard port: $DASH_PORT, CXDB port: $CXDB_PORT"
 
 # Start containers with unique project name and random ports
 DATASETTE_PORT="$APP_PORT" DASHBOARD_PORT="$DASH_PORT" \
+    CXDB_HTTP_PORT="$CXDB_PORT" CXDB_BINARY_PORT="$CXDB_BIN_PORT" \
     docker compose -p "$PROJECT" -f "$COMPOSE_FILE" up -d --build --wait 2>&1
 
 # Wait for Datasette to be ready (up to 30s)
@@ -50,7 +53,7 @@ done
 FAILED=0
 
 # Test 1: Datasette root responds
-echo -n "  [1/4] Datasette root... "
+echo -n "  [1/5] Datasette root... "
 if curl -sf "http://localhost:$APP_PORT" >/dev/null; then
     echo "OK"
 else
@@ -59,7 +62,7 @@ else
 fi
 
 # Test 2: work_items table exists and returns JSON
-echo -n "  [2/4] work_items.json... "
+echo -n "  [2/5] work_items.json... "
 RESP=$(curl -sf "http://localhost:$APP_PORT/ai_manager/work_items.json?_size=1" 2>/dev/null || true)
 if echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'rows' in d or 'ok' in d" 2>/dev/null; then
     echo "OK"
@@ -72,7 +75,7 @@ else
 fi
 
 # Test 3: documents table exists
-echo -n "  [3/4] documents.json... "
+echo -n "  [3/5] documents.json... "
 if curl -sf "http://localhost:$APP_PORT/ai_manager/documents.json?_size=1" >/dev/null; then
     echo "OK"
 else
@@ -81,11 +84,22 @@ else
 fi
 
 # Test 4: sessions table exists
-echo -n "  [4/4] sessions.json... "
+echo -n "  [4/5] sessions.json... "
 if curl -sf "http://localhost:$APP_PORT/ai_manager/sessions.json?_size=1" >/dev/null; then
     echo "OK"
 else
     echo "FAIL"
+    FAILED=1
+fi
+
+# Test 5: CXDB HTTP API responds
+echo -n "  [5/5] CXDB contexts API... "
+CXDB_RESP=$(curl -sf "http://localhost:$CXDB_PORT/v1/contexts?limit=1" 2>/dev/null || true)
+if echo "$CXDB_RESP" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
+    echo "OK"
+else
+    echo "FAIL"
+    echo "  Response: ${CXDB_RESP:0:200}"
     FAILED=1
 fi
 

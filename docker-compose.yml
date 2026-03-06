@@ -9,6 +9,19 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      - CXDB_URL=http://cxdb:80
+    depends_on:
+      cxdb:
+        condition: service_started
+
+  cxdb:
+    image: cxdb/cxdb:latest
+    ports:
+      - "${CXDB_HTTP_PORT:-9010}:80"
+      - "${CXDB_BINARY_PORT:-9009}:9009"
+    volumes:
+      - cxdb-data:/data
 
   dashboard:
     build: ./dashboard
@@ -19,3 +32,4 @@ services:
 
 volumes:
   db-data:
+  cxdb-data:

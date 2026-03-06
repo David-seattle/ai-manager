@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 
+from .cxdb_client import CxdbClient
 from .jira_client import JiraClient
 from .loader import loader_loop
 from .schema import create_tables
@@ -27,6 +28,7 @@ S3_BUCKET = os.environ.get("TRANSCRIPT_S3_BUCKET", "")
 S3_REGION = os.environ.get("TRANSCRIPT_S3_REGION", "us-east-2")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 TRANSCRIPT_PROXY_PORT = os.environ.get("TRANSCRIPT_PROXY_PORT", "8002")
+CXDB_URL = os.environ.get("CXDB_URL", "")
 
 
 def main() -> None:
@@ -70,6 +72,11 @@ def main() -> None:
         proxy_thread.start()
         logger.info("Transcript proxy started on port %d", proxy_port)
 
+    cxdb_client = None
+    if CXDB_URL:
+        cxdb_client = CxdbClient(CXDB_URL)
+        logger.info("CXDB client configured for %s", CXDB_URL)
+
     try:
         loader_loop(
             db_path=DB_PATH,
@@ -79,6 +86,7 @@ def main() -> None:
             jira_client=jira_client,
             transcript_store=transcript_store,
             anthropic_client=anthropic_client,
+            cxdb_client=cxdb_client,
         )
     except KeyboardInterrupt:
         logger.info("Shutting down")
