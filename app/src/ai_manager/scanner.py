@@ -101,11 +101,26 @@ def scan_workspace(
             if not item_dir.is_dir():
                 continue
 
-            source, item_id = classify_work_item(item_dir / "_")
-            item, docs, questions, decisions = scan_work_item_dir(item_dir, source, item_id)
-            all_items.append(item)
-            all_docs.extend(docs)
-            all_questions.extend(questions)
-            all_decisions.extend(decisions)
+            # Support per-user namespacing: beads/<owner>/<bead-id>/
+            # If directory has no requirements/decisions/questions subdirs and no .md files,
+            # treat it as a namespace directory and recurse into its children.
+            has_content = (
+                (item_dir / "requirements").exists()
+                or (item_dir / "decisions").exists()
+                or (item_dir / "questions").exists()
+                or any(item_dir.glob("*.md"))
+            )
+            if has_content:
+                dirs_to_scan = [item_dir]
+            else:
+                dirs_to_scan = sorted(d for d in item_dir.iterdir() if d.is_dir())
+
+            for scan_dir in dirs_to_scan:
+                source, item_id = classify_work_item(scan_dir / "_")
+                item, docs, questions, decisions = scan_work_item_dir(scan_dir, source, item_id)
+                all_items.append(item)
+                all_docs.extend(docs)
+                all_questions.extend(questions)
+                all_decisions.extend(decisions)
 
     return all_items, all_docs, all_questions, all_decisions
