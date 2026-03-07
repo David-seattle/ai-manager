@@ -1,0 +1,16 @@
+{
+  "id": "aim-abc1",
+  "title": "Example scaffolding task",
+  "description": "Set up the project with Docker Compose, Dockerfiles, and basic structure.",
+  "status": "in_progress",
+  "issue_type": "task",
+  "priority": 2,
+  "owner": "dtarico@suplari.com",
+  "assignee": "ai_manager/polecats/quartz",
+  "created_at": "2026-03-01T00:00:00Z",
+  "updated_at": "2026-03-05T12:00:00Z",
+  "closed_at": null,
+  "close_reason": "",
+  "synced_at": "2026-03-05T12:00:00Z",
+  "dependencies": []
+}
