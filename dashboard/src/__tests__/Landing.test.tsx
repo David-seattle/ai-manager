@@ -44,6 +44,7 @@ function renderLanding() {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  localStorage.clear();
 });
 
 describe("Landing", () => {
@@ -172,6 +173,175 @@ describe("Landing", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/no work items found/i)).toBeInTheDocument();
+    });
+  });
+
+  describe("card pinning", () => {
+    function mockFetch(items: WorkItem[] = mockItems) {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        json: async () => items,
+      } as Response);
+    }
+
+    it("shows pin button on each card", async () => {
+      mockFetch();
+      renderLanding();
+
+      await waitFor(() => {
+        expect(screen.getByText("Fix login bug")).toBeInTheDocument();
+      });
+
+      const pinButtons = screen.getAllByRole("button", { name: /pin/i });
+      expect(pinButtons).toHaveLength(2);
+    });
+
+    it("pins a card and shows Pinned section", async () => {
+      mockFetch();
+      const user = userEvent.setup();
+      renderLanding();
+
+      await waitFor(() => {
+        expect(screen.getByText("Fix login bug")).toBeInTheDocument();
+      });
+
+      const pinButtons = screen.getAllByRole("button", { name: /pin/i });
+      await user.click(pinButtons[0]!);
+
+      expect(screen.getByText("Pinned")).toBeInTheDocument();
+    });
+
+    it("unpins a pinned card", async () => {
+      localStorage.setItem("dashboard_pinned_cards_v1", JSON.stringify(["aim-001"]));
+      mockFetch();
+      const user = userEvent.setup();
+      renderLanding();
+
+      await waitFor(() => {
+        expect(screen.getByText("Pinned")).toBeInTheDocument();
+      });
+
+      const unpinButton = screen.getByRole("button", { name: /unpin/i });
+      await user.click(unpinButton);
+
+      expect(screen.queryByText("Pinned")).not.toBeInTheDocument();
+    });
+
+    it("pinned cards appear before unpinned cards", async () => {
+      localStorage.setItem("dashboard_pinned_cards_v1", JSON.stringify(["aim-002"]));
+      mockFetch();
+      renderLanding();
+
+      await waitFor(() => {
+        expect(screen.getByText("Pinned")).toBeInTheDocument();
+      });
+
+      // aim-002 should be in the pinned section (before aim-001)
+      const titles = screen.getAllByText(/Fix login bug|Add dashboard cards/);
+      expect(titles[0]!.textContent).toBe("Add dashboard cards");
+      expect(titles[1]!.textContent).toBe("Fix login bug");
+    });
+
+    it("shows max pins message when 6 cards pinned", async () => {
+      const manyItems: WorkItem[] = Array.from({ length: 7 }, (_, i) => ({
+        id: `aim-${String(i + 1).padStart(3, "0")}`,
+        source: "beads",
+        issue_type: "task",
+        title: `Item ${i + 1}`,
+        description: "",
+        path: `/items/aim-${String(i + 1).padStart(3, "0")}`,
+        status: "open",
+        priority: "P2",
+        assignee: "alice",
+        created_at: "2026-03-01",
+        updated_at: "2026-03-01",
+      }));
+
+      const pinnedIds = manyItems.slice(0, 6).map((item) => item.id);
+      localStorage.setItem("dashboard_pinned_cards_v1", JSON.stringify(pinnedIds));
+      mockFetch(manyItems);
+
+      const user = userEvent.setup();
+      renderLanding();
+
+      await waitFor(() => {
+        expect(screen.getByText("Item 7")).toBeInTheDocument();
+      });
+
+      // Try to pin the 7th card
+      const unpinnedPinButton = screen.getAllByRole("button", { name: /pin/i }).find(
+        (btn) => !btn.getAttribute("aria-label")?.includes("Unpin"),
+      );
+      expect(unpinnedPinButton).toBeDefined();
+      await user.click(unpinnedPinButton!);
+
+      expect(screen.getByText(/unpin a card to make room/i)).toBeInTheDocument();
+    });
+
+    it("persists pin state across reloads via localStorage", async () => {
+      mockFetch();
+      const user = userEvent.setup();
+      const { unmount } = renderLanding();
+
+      await waitFor(() => {
+        expect(screen.getByText("Fix login bug")).toBeInTheDocument();
+      });
+
+      const pinButtons = screen.getAllByRole("button", { name: /pin/i });
+      await user.click(pinButtons[0]!);
+
+      expect(JSON.parse(localStorage.getItem("dashboard_pinned_cards_v1")!)).toContain("aim-001");
+
+      unmount();
+
+      // Re-render — pin should survive
+      mockFetch();
+      renderLanding();
+
+      await waitFor(() => {
+        expect(screen.getByText("Pinned")).toBeInTheDocument();
+      });
+    });
+
+    it("silently removes stale pins for deleted work items", async () => {
+      localStorage.setItem(
+        "dashboard_pinned_cards_v1",
+        JSON.stringify(["aim-001", "aim-deleted"]),
+      );
+      mockFetch();
+      renderLanding();
+
+      await waitFor(() => {
+        expect(screen.getByText("Fix login bug")).toBeInTheDocument();
+      });
+
+      // aim-deleted should have been cleaned up
+      const stored = JSON.parse(localStorage.getItem("dashboard_pinned_cards_v1")!);
+      expect(stored).toEqual(["aim-001"]);
+    });
+
+    it("pinned card has visual distinction (left border)", async () => {
+      localStorage.setItem("dashboard_pinned_cards_v1", JSON.stringify(["aim-001"]));
+      mockFetch();
+      renderLanding();
+
+      await waitFor(() => {
+        expect(screen.getByText("Pinned")).toBeInTheDocument();
+      });
+
+      const pinnedCard = screen.getByText("Fix login bug").closest("[data-pinned]");
+      expect(pinnedCard).toHaveAttribute("data-pinned", "true");
+    });
+
+    it("does not show Pinned section when no cards are pinned", async () => {
+      mockFetch();
+      renderLanding();
+
+      await waitFor(() => {
+        expect(screen.getByText("Fix login bug")).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText("Pinned")).not.toBeInTheDocument();
     });
   });
 });
