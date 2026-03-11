@@ -7,7 +7,7 @@ set -euo pipefail
 
 BUCKET="gastown-transcripts"
 REGION="us-east-2"
-SOURCE_DIR="$HOME/src/github.com/david-seattle/workspace/conversations"
+SOURCE_DIR="$HOME/gt/workspace/mayor/rig/conversations"
 S3_PREFIX="s3://${BUCKET}/conversations/"
 
 if ! command -v aws &>/dev/null; then

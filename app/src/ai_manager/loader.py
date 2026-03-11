@@ -79,7 +79,7 @@ def loader_loop(
                 sync_workspace(repo_url, workspace_dir, github_token)
                 run_sync_cycle(conn, workspace_dir, jira_client)
                 if transcript_store and anthropic_client:
-                    sync_sessions(conn, transcript_store, anthropic_client)
+                    sync_sessions(conn, transcript_store, anthropic_client, workspace_dir=workspace_dir)
                 if cxdb_client:
                     sync_to_cxdb(conn, cxdb_client, transcript_store=transcript_store, workspace_dir=workspace_dir)
             except Exception:
