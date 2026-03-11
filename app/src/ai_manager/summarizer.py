@@ -1,5 +1,6 @@
 import json
 import logging
+import pathlib
 from datetime import datetime, timezone
 
 from .models import Session
@@ -96,7 +97,14 @@ def summarize_transcript(anthropic_client, transcript_text: str) -> str:
     return response.content[0].text.strip()
 
 
-def sync_sessions(conn, transcript_store, anthropic_client, max_new_per_cycle: int = 10) -> int:
+def list_local_work_item_links(workspace_dir: pathlib.Path, session_id: str) -> list[str]:
+    workitems_dir = workspace_dir / "conversations" / session_id / "workitems"
+    if not workitems_dir.is_dir():
+        return []
+    return [f.name for f in workitems_dir.iterdir() if f.is_file()]
+
+
+def sync_sessions(conn, transcript_store, anthropic_client, max_new_per_cycle: int = 10, workspace_dir: pathlib.Path | None = None) -> int:
     known_etags = get_session_etags(conn)
     s3_objects = transcript_store.list_sessions()
 
@@ -119,7 +127,10 @@ def sync_sessions(conn, transcript_store, anthropic_client, max_new_per_cycle: i
             if truncated.strip():
                 summary = summarize_transcript(anthropic_client, truncated)
 
-            work_item_ids = transcript_store.list_work_item_links(session_id)
+            if workspace_dir:
+                work_item_ids = list_local_work_item_links(workspace_dir, session_id)
+            else:
+                work_item_ids = transcript_store.list_work_item_links(session_id)
 
             session = Session(
                 session_id=session_id,

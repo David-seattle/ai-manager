@@ -11,6 +11,8 @@ services:
         required: false
     environment:
       - CXDB_URL=http://cxdb:80
+      - TRANSCRIPT_S3_BUCKET=${TRANSCRIPT_S3_BUCKET:-gastown-transcripts}
+      - TRANSCRIPT_S3_REGION=${TRANSCRIPT_S3_REGION:-us-east-2}
     depends_on:
       cxdb:
         condition: service_started

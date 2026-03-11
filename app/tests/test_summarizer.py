@@ -1,4 +1,5 @@
 import json
+import pathlib
 import sqlite3
 from unittest.mock import MagicMock
 
@@ -9,6 +10,7 @@ from ai_manager.schema import create_tables, get_session_etags, upsert_session
 from ai_manager.models import Session
 from ai_manager.summarizer import (
     extract_conversation_text,
+    list_local_work_item_links,
     summarize_transcript,
     sync_sessions,
     truncate_text,
@@ -238,6 +240,110 @@ class TestSyncSessions:
 
         row = db.execute("SELECT session_id FROM sessions").fetchone()
         assert row[0] == "sess-good"
+
+
+class TestListLocalWorkItemLinks:
+    def test_reads_marker_files(self, tmp_path):
+        workitems_dir = tmp_path / "conversations" / "sess-1" / "workitems"
+        workitems_dir.mkdir(parents=True)
+        (workitems_dir / "EN-1234").touch()
+        (workitems_dir / "aim-abc1").touch()
+
+        result = list_local_work_item_links(tmp_path, "sess-1")
+        assert sorted(result) == ["EN-1234", "aim-abc1"]
+
+    def test_no_workitems_dir(self, tmp_path):
+        conv_dir = tmp_path / "conversations" / "sess-1"
+        conv_dir.mkdir(parents=True)
+
+        result = list_local_work_item_links(tmp_path, "sess-1")
+        assert result == []
+
+    def test_no_session_dir(self, tmp_path):
+        result = list_local_work_item_links(tmp_path, "nonexistent")
+        assert result == []
+
+    def test_multiple_work_items(self, tmp_path):
+        workitems_dir = tmp_path / "conversations" / "sess-2" / "workitems"
+        workitems_dir.mkdir(parents=True)
+        (workitems_dir / "EN-1234").touch()
+        (workitems_dir / "EN-5678").touch()
+        (workitems_dir / "dtarico_hq-deacon").touch()
+
+        result = list_local_work_item_links(tmp_path, "sess-2")
+        assert sorted(result) == ["EN-1234", "EN-5678", "dtarico_hq-deacon"]
+
+
+class TestSyncSessionsWithWorkspaceDir:
+    @pytest.fixture
+    def db(self):
+        conn = sqlite3.connect(":memory:")
+        create_tables(conn)
+        yield conn
+        conn.close()
+
+    def _make_store(self, sessions=None, transcripts=None):
+        store = MagicMock()
+        store.list_sessions.return_value = sessions or []
+        store.session_id_from_key = TranscriptStoreMock.session_id_from_key
+
+        def download(sid):
+            return (transcripts or {}).get(sid, "")
+        store.download_transcript = download
+
+        return store
+
+    def _make_anthropic(self, summary="Test summary."):
+        client = MagicMock()
+        resp = MagicMock()
+        resp.content = [MagicMock(text=summary)]
+        client.messages.create.return_value = resp
+        return client
+
+    def test_reads_links_from_local_workspace(self, db, tmp_path):
+        workitems_dir = tmp_path / "conversations" / "sess-1" / "workitems"
+        workitems_dir.mkdir(parents=True)
+        (workitems_dir / "EN-1234").touch()
+
+        transcript = _jsonl(
+            {"type": "user", "timestamp": "2025-01-01T10:00:00Z",
+             "message": {"content": "help me"}},
+        )
+        store = self._make_store(
+            sessions=[S3Object(key="conversations/sess-1/transcript.jsonl", etag='"abc"')],
+            transcripts={"sess-1": transcript},
+        )
+        client = self._make_anthropic()
+
+        count = sync_sessions(db, store, client, workspace_dir=tmp_path)
+        assert count == 1
+
+        links = db.execute(
+            "SELECT work_item_id FROM session_work_items WHERE session_id='sess-1'"
+        ).fetchall()
+        assert links[0][0] == "EN-1234"
+
+        # Should NOT call S3 list_work_item_links when workspace_dir is provided
+        store.list_work_item_links.assert_not_called()
+
+    def test_no_markers_stores_empty_links(self, db, tmp_path):
+        transcript = _jsonl(
+            {"type": "user", "timestamp": "2025-01-01T10:00:00Z",
+             "message": {"content": "hello"}},
+        )
+        store = self._make_store(
+            sessions=[S3Object(key="conversations/sess-1/transcript.jsonl", etag='"abc"')],
+            transcripts={"sess-1": transcript},
+        )
+        client = self._make_anthropic()
+
+        count = sync_sessions(db, store, client, workspace_dir=tmp_path)
+        assert count == 1
+
+        links = db.execute(
+            "SELECT work_item_id FROM session_work_items WHERE session_id='sess-1'"
+        ).fetchall()
+        assert links == []
 
 
 class TranscriptStoreMock:
