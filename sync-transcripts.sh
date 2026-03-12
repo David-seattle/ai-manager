@@ -5,8 +5,8 @@
 
 set -euo pipefail
 
-BUCKET="gastown-transcripts"
-REGION="us-east-2"
+BUCKET="ai-conversation-store"
+REGION="us-west-2"
 SOURCE_DIR="$HOME/gt/workspace/mayor/rig/conversations"
 S3_PREFIX="s3://${BUCKET}/conversations/"
 
