@@ -6,6 +6,7 @@ import Overview from "./pages/Overview";
 import DocumentPage from "./pages/DocumentPage";
 import QuestionsPage from "./pages/QuestionsPage";
 import DecisionsPage from "./pages/DecisionsPage";
+import DecisionDetailPage from "./pages/DecisionDetailPage";
 import SessionsPage from "./pages/SessionsPage";
 
 export const router = createBrowserRouter([
@@ -19,6 +20,7 @@ export const router = createBrowserRouter([
       { path: "doc/:docType", element: <DocumentPage /> },
       { path: "questions", element: <QuestionsPage /> },
       { path: "decisions", element: <DecisionsPage /> },
+      { path: "decisions/:filename", element: <DecisionDetailPage /> },
       { path: "sessions", element: <SessionsPage /> },
     ],
   },
