@@ -273,6 +273,53 @@ class TestListLocalWorkItemLinks:
         result = list_local_work_item_links(tmp_path, "sess-2")
         assert sorted(result) == ["EN-1234", "EN-5678", "dtarico_hq-deacon"]
 
+    def test_reads_markers_in_user_subdirectory(self, tmp_path):
+        workitems_dir = tmp_path / "conversations" / "sess-1" / "workitems"
+        user_dir = workitems_dir / "dtarico"
+        user_dir.mkdir(parents=True)
+        (user_dir / "aim-xxlo").touch()
+        (user_dir / "aim-abc1").touch()
+
+        result = list_local_work_item_links(tmp_path, "sess-1")
+        assert sorted(result) == ["aim-abc1", "aim-xxlo"]
+
+    def test_mixed_flat_and_nested_markers(self, tmp_path):
+        workitems_dir = tmp_path / "conversations" / "sess-1" / "workitems"
+        workitems_dir.mkdir(parents=True)
+        (workitems_dir / "EN-1234").touch()
+        user_dir = workitems_dir / "dtarico"
+        user_dir.mkdir()
+        (user_dir / "aim-xxlo").touch()
+
+        result = list_local_work_item_links(tmp_path, "sess-1")
+        assert sorted(result) == ["EN-1234", "aim-xxlo"]
+
+    def test_multiple_user_subdirectories(self, tmp_path):
+        workitems_dir = tmp_path / "conversations" / "sess-1" / "workitems"
+        (workitems_dir / "dtarico").mkdir(parents=True)
+        (workitems_dir / "dtarico" / "aim-xxlo").touch()
+        (workitems_dir / "rzavala").mkdir()
+        (workitems_dir / "rzavala" / "EN-5678").touch()
+
+        result = list_local_work_item_links(tmp_path, "sess-1")
+        assert sorted(result) == ["EN-5678", "aim-xxlo"]
+
+    def test_empty_user_subdirectory(self, tmp_path):
+        workitems_dir = tmp_path / "conversations" / "sess-1" / "workitems"
+        (workitems_dir / "dtarico").mkdir(parents=True)
+
+        result = list_local_work_item_links(tmp_path, "sess-1")
+        assert result == []
+
+    def test_nested_subdirectory_ignored(self, tmp_path):
+        workitems_dir = tmp_path / "conversations" / "sess-1" / "workitems"
+        deep_dir = workitems_dir / "dtarico" / "deep"
+        deep_dir.mkdir(parents=True)
+        (deep_dir / "aim-xxlo").touch()
+
+        result = list_local_work_item_links(tmp_path, "sess-1")
+        assert result == []
+
 
 class TestSyncSessionsWithWorkspaceDir:
     @pytest.fixture
@@ -344,6 +391,29 @@ class TestSyncSessionsWithWorkspaceDir:
             "SELECT work_item_id FROM session_work_items WHERE session_id='sess-1'"
         ).fetchall()
         assert links == []
+
+    def test_reads_links_from_user_subdirectory(self, db, tmp_path):
+        user_dir = tmp_path / "conversations" / "sess-1" / "workitems" / "dtarico"
+        user_dir.mkdir(parents=True)
+        (user_dir / "aim-xxlo").touch()
+
+        transcript = _jsonl(
+            {"type": "user", "timestamp": "2025-01-01T10:00:00Z",
+             "message": {"content": "help me"}},
+        )
+        store = self._make_store(
+            sessions=[S3Object(key="conversations/sess-1/transcript.jsonl", etag='"abc"')],
+            transcripts={"sess-1": transcript},
+        )
+        client = self._make_anthropic()
+
+        count = sync_sessions(db, store, client, workspace_dir=tmp_path)
+        assert count == 1
+
+        links = db.execute(
+            "SELECT work_item_id FROM session_work_items WHERE session_id='sess-1'"
+        ).fetchall()
+        assert links[0][0] == "aim-xxlo"
 
 
 class TranscriptStoreMock:

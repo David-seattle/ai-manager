@@ -101,7 +101,15 @@ def list_local_work_item_links(workspace_dir: pathlib.Path, session_id: str) -> 
     workitems_dir = workspace_dir / "conversations" / session_id / "workitems"
     if not workitems_dir.is_dir():
         return []
-    return [f.name for f in workitems_dir.iterdir() if f.is_file()]
+    result = []
+    for entry in workitems_dir.iterdir():
+        if entry.is_file():
+            result.append(entry.name)
+        elif entry.is_dir():
+            for child in entry.iterdir():
+                if child.is_file():
+                    result.append(child.name)
+    return result
 
 
 def sync_sessions(conn, transcript_store, anthropic_client, max_new_per_cycle: int = 10, workspace_dir: pathlib.Path | None = None) -> int:
