@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Spinner, Text } from "@fluentui/react-components";
 import { useWorkItem } from "../hooks/useWorkItem";
 import DataTable, { type Column } from "../components/DataTable";
@@ -23,8 +24,24 @@ const tagStyle = {
   borderRadius: 9999,
 };
 
+function decisionLink(filename: string): string {
+  return filename.replace(/\.md$/, "");
+}
+
 const columns: Column<Decision>[] = [
-  { key: "decision_text", header: "Decision", sortable: true },
+  {
+    key: "decision_text",
+    header: "Decision",
+    sortable: true,
+    render: (_value, row) => (
+      <Link
+        to={decisionLink(row.filename)}
+        style={{ color: "#106EBE", textDecoration: "none" }}
+      >
+        {row.decision_text}
+      </Link>
+    ),
+  },
   { key: "status", header: "Status", sortable: true },
   { key: "decider", header: "Decider", sortable: true },
   { key: "date", header: "Date", sortable: true },
